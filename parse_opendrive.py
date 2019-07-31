@@ -3,6 +3,7 @@
 import numpy as np
 from lxml import etree
 from enum import Enum
+import os
 
 def get_string(node, name):
     return node.get(name)
@@ -156,28 +157,33 @@ class RoadLaneOffset:
 
 class RoadLaneSection:
     def __init__(self, node_laneSection):
+        self.id = -1
         self.s = get_float(node_laneSection, 's')
         self.left_lanes = []
         self.center_lanes = []
         self.right_lanes = []
+        self.all_lanes = {}
 
         node_left = node_laneSection.find('left')
         if node_left is not None:
             for node_lane in node_left.findall('lane'):
                 lane = Lane(node_lane)
                 self.left_lanes.append(lane)
+                self.all_lanes[lane.id] = lane
         
         node_center = node_laneSection.find('center')
         if node_center is not None:
             for node_lane in node_center.findall('lane'):
                 lane = Lane(node_lane)
                 self.center_lanes.append(lane)
+                self.all_lanes[lane.id] = lane
         
         node_right = node_laneSection.find('right')
         if node_right is not None:
             for node_lane in node_right.findall('lane'):
                 lane = Lane(node_lane)
                 self.right_lanes.append(lane)
+                self.all_lanes[lane.id] = lane
 
 class LaneLinkElement: 
     def __init__(self, node_element):
@@ -270,7 +276,7 @@ class Lane:
         self.type = get_string(node_lane, 'type')
         self.link = None
         self.width = None
-        self.roadMark = None
+        self.roadMarks = []
         self.speed = None
         self.height = None
         self.userData = None
@@ -283,9 +289,9 @@ class Lane:
         if node_width is not None:
             self.width = LaneWidth(node_width)
 
-        node_mark = node_lane.find('roadMark')
-        if node_mark is not None:
-            self.roadMark = LaneMark(node_mark)
+        for node_mark in node_lane.findall('roadMark'):
+            roadMark = LaneMark(node_mark)
+            self.roadMarks.append(roadMark)
 
         node_speed = node_lane.find('speed')
         if node_speed is not None:
@@ -299,6 +305,21 @@ class Lane:
         if node_user is not None:
             self.userData = LaneUserData(node_user)
 
+class RoadObject:
+    def __init__(self, node_object):
+        # <object id="100101" type="vegetation" name="VegBush04.flt" s="0" t="1" zOffset="0" length="3" width="3" height="3" hdg="0.7055475" pitch="0" roll="0" />
+        self.id = get_int(node_object, 'id')
+        self.type = get_string(node_object, 'type')
+        self.name = get_string(node_object, 'name')
+        self.s = get_float(node_object, 's')
+        self.t = get_float(node_object, 't')
+        self.zOffset = get_float(node_object, 'zOffset')
+        self.length = get_float(node_object, 'length')
+        self.width = get_float(node_object, 'width')
+        self.height = get_float(node_object, 'height')
+        self.hdg = get_float(node_object, 'hdg')
+        self.pitch = get_float(node_object, 'pitch')
+        self.roll = get_float(node_object, 'roll')
 
 class Road:
     def __init__(self, node_road):        
@@ -313,6 +334,7 @@ class Road:
         self.elevationProfile = []
         self.laneOffsets = []
         self.laneSections = []
+        self.objects = []
 
         # <road id="201" name="" junction="-1" length="70.6552863027954">
         self.id = get_int(node_road, 'id')
@@ -359,8 +381,14 @@ class Road:
                 
                 for node_laneSection in node_lanes.findall('laneSection'):
                     laneSection = RoadLaneSection(node_laneSection)
+                    laneSection.id = len(self.laneSections)
                     self.laneSections.append(laneSection)
 
+            node_objects = node_road.find('objects')
+            if node_objects is not None:
+                for node_object in node_objects.findall('object'):
+                    road_object =  RoadObject(node_object)  
+                    self.objects.append(road_object)     
 
 class Control:
     def __init__(self, node_control):
@@ -432,9 +460,17 @@ class OpenDrive:
 if __name__ == "__main__":
     
     xodr_file = r'sample_largezone.xodr'
-
-    doc = etree.parse(xodr_file)
-    opendrive = OpenDrive(doc.getroot())
     
-    print('parse ok')
+    if os.path.exists(xodr_file):
+        doc = etree.parse(xodr_file)
+        opendrive = OpenDrive(doc.getroot())    
+        print('parse ok')
+
+        for road in opendrive.roads:
+            for lanesection in road.laneSections:
+                for lane in lanesection.all_lanes.values():
+                    if len(lane.roadMarks) > 1:
+                        print(road.id, lanesection.id, lanesection.s)
+    else:
+        print(xodr_file, 'not found')
      
